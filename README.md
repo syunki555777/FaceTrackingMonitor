@@ -1,0 +1,2 @@
+# FaceTrackingMonitor
+このシステムは教員の方向けにMediapipeの測定値をモニタリングするためのツールです。
