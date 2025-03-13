@@ -10,7 +10,11 @@ import pandas as pd
 import uuid
 import asyncio
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+
+# clientディレクトリ内のテンプレートを扱う
+client_directory = "client"
+client_template = Jinja2Templates(directory=client_directory)
+monitor_template = Jinja2Templates(directory="monitor")
 
 # グローバル変数
 clients = set()
@@ -80,14 +84,29 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 
-@app.get("/")
-async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+@app.get("/client/{file_name:path}", response_class=HTMLResponse)
+async def serve_client_templates(file_name: str, request: Request):
+    """
+    clientディレクトリ内のHTMLファイルを動的に読み込むエンドポイント
+    """
+    # デフォルトファイル名に対応 (e.g., /client --> /client/index.html)
+    if not file_name:
+        file_name = "index.html"
+
+    # 指定されたファイルパスを構築
+    file_path = os.path.join(client_directory, file_name)
+
+    # ファイルの存在を確認
+    if not os.path.isfile(file_path):
+        return HTMLResponse(status_code=404, content="File not found")
+
+    # 指定されたHTMLテンプレートをロード
+    return client_template.TemplateResponse(file_name, {"request": request})
 
 
 @app.get("/monitor")
 async def monitor(request: Request):
-    return templates.TemplateResponse("monitor.html", {"request": request})
+    return monitor_template.TemplateResponse("monitor.html", {"request": request})
 
 
 if __name__ == "__main__":

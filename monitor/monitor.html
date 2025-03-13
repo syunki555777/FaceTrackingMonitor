@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>リアルタイムデータ時系列グラフ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 20px;
+        }
+        .client-card {
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            padding: 16px;
+            width: 400px;
+        }
+        .client-card h2 {
+            font-size: 18px;
+            margin: 0 0 10px;
+        }
+        canvas {
+            max-width: 100%;
+            height: 200px;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">リアルタイム時系列データグラフ</h1>
+    <div class="container" id="client_container"></div>
+
+    <!-- Chart.jsを読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        const socket = new WebSocket("ws://" + window.location.host + "/ws-monitor");
+
+        // 時系列データを保存するためのオブジェクト
+        const clientDataHistory = {}; // { clientId: { label: [], data: { key: [] } } }
+        let charts = {}; // クライアントごとにChartインスタンスを保持
+
+        // WebSocketが開いたときの処理
+        socket.onopen = function() {
+            console.log("WebSocket接続が確立しました。");
+        };
+
+        // データ受信時
+        socket.onmessage = function (event) {
+            try {
+                const data = JSON.parse(event.data);
+
+                Object.entries(data).forEach(([clientId, clientData]) => {
+                    const currentTime = new Date().toLocaleTimeString(); // 現在の時刻
+                    const newDatasetValues = Object.values(clientData).map(value => {
+                        return typeof value === "string" ? parseFloat(value.replace(/[^\d.-]/g, '')) : value;
+                    });
+
+                    // チャートが存在する場合はデータを更新
+                    if (charts[clientId]) {
+                        updateChartData(charts[clientId], currentTime, newDatasetValues);
+                    } else {
+                        // チャートが存在しない場合は新規作成
+                        drawChart(clientId, clientData);
+                    }
+                });
+            } catch (e) {
+                console.error("データ解析エラー:", e);
+            }
+        };
+
+        // グラフを描画する関数
+        function drawChart(clientId, initialData) {
+            const container = document.getElementById("client_container");
+
+            // クライアントカードの生成
+            let card = document.getElementById(`card_${clientId}`);
+            if (!card) {
+                card = document.createElement("div");
+                card.className = "client-card";
+                card.id = `card_${clientId}`;
+                container.appendChild(card);
+
+                const title = document.createElement("h2");
+                title.textContent = `クライアントID: ${clientId}`;
+                card.appendChild(title);
+
+                const canvas = document.createElement("canvas");
+                canvas.id = `chart_${clientId}`;
+                card.appendChild(canvas);
+            }
+
+            // 初期データセット準備
+            const labels = []; // 最初は空のラベル（時刻）
+            const datasets = Object.entries(initialData).map(([key, values]) => ({
+                label: key, // 温度、湿度などのキー
+                data: [], // 初期は空
+                fill: false,
+                borderColor: randomColor(),
+                tension: 0.1
+            }));
+
+            const ctx = document.getElementById(`chart_${clientId}`).getContext('2d');
+            charts[clientId] = new Chart(ctx, {
+                type: 'line', // 折れ線グラフ
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    animation: false, // アニメーションの有効化
+                    scales: {
+                        x: {
+                            title: { display: true, text: "時刻" }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: "値" }
+                        }
+                    }
+                }
+            });
+        }
+
+            // データセットを生成
+            const datasets = Object.entries(clientDataHistory[clientId].datasets).map(([key, values]) => ({
+                label: key, // 例: 温度、湿度
+                data: values, // 各キーに対応する時系列データ
+                fill: false,
+                borderColor: randomColor(),
+                tension: 0.1
+            }));
+
+            // グラフを再描画
+            const ctx = document.getElementById(`chart_${clientId}`).getContext('2d');
+            if (charts[clientId]) {
+                charts[clientId].destroy(); // 古いグラフを破棄
+            }
+
+            charts[clientId] = new Chart(ctx, {
+                type: 'line', // 折れ線グラフ
+                data: {
+                    labels: clientDataHistory[clientId].labels, // 時系列のラベル
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    animation: false, // アニメーションを無効化
+                    scales: {
+                        x: {
+                            title: { display: true, text: "時刻" }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: "値" }
+                        }
+                    }
+                }
+            });
+
+
+        function updateChartData(chart, newLabel, newDatasetValues) {
+    // ラベル（X軸）に新しい時刻を追加
+            chart.data.labels.push(newLabel); // 新しいラベル（時刻、例えば "12:00:01"）を追加
+
+            // 各データセットに対応した値を追加
+            newDatasetValues.forEach((newValue, index) => {
+                chart.data.datasets[index].data.push(newValue);
+            });
+
+            // グラフに設定された最大データ数を超えた場合、古いデータを削除
+            if (chart.data.labels.length > 100) { // 最大30件まで保持
+                chart.data.labels.shift(); // 最初のラベルを削除
+                chart.data.datasets.forEach(dataset => {
+                    dataset.data.shift(); // 各データセットの古いデータを削除
+                });
+            }
+
+            // グラフを更新
+            chart.update();
+        }
+
+        // ランダムな色を生成する関数
+        function randomColor() {
+            const r = Math.floor(Math.random() * 255);
+            const g = Math.floor(Math.random() * 255);
+            const b = Math.floor(Math.random() * 255);
+            return `rgba(${r}, ${g}, ${b}, 0.7)`;
+        }
+
+        // WebSocketが閉じたときの処理
+        socket.onclose = function() {
+            console.warn("WebSocket接続が切断されました。");
+            alert("サーバーとの接続が切断されました。ページを再読み込みしてください。");
+        };
+
+        // エラーが発生した場合の処理
+        socket.onerror = function(error) {
+            console.error("WebSocketエラー:", error);
+        };
+    </script>
+</body>
+</html>

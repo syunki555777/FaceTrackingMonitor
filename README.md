@@ -59,7 +59,7 @@
 1. **必要な依存パッケージのインストール**  
    以下のコマンドで `FastAPI` や `uvicorn` 等の依存パッケージをインストールします。
    ```bash
-   pip install fastapi uvicorn pandas jinja2
+   pip install websockets fastapi uvicorn pandas jinja2
    ```
 
 2. **サーバーの起動**  
@@ -75,3 +75,15 @@
 
 ## 開発者情報
 初版作成者: 鈴木 舜基
+
+## ライセンス
+
+このプロジェクトはMITライセンスの下で提供されています。詳細は[`LICENSE`](./LICENSE)ファイルをご確認ください。
+
+### サードパーティライブラリのライセンス
+
+- Mediapipe: Apache License 2.0
+- jQuery: MIT License
+- Chart.js: MIT License
+
+詳細は[`THIRD-PARTY-NOTICES`](./THIRD-PARTY-NOTICES)ファイルをご確認ください。
