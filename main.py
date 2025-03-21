@@ -110,7 +110,7 @@ import argparse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the FastAPI server.")
     parser.add_argument("-host", type=str, default="127.0.0.1", help="Host IP to bind the FastAPI server to.")
-    parser.add_argument("-port", type=int, default=8001, help="Port number to run the FastAPI server on.")
+    parser.add_argument("-port", type=int, default=8000, help="Port number to run the FastAPI server on.")
     args = parser.parse_args()
 
     uvicorn.run(app, host=args.host, port=args.port)
