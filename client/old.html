@@ -21,6 +21,7 @@
 <video id="video" autoplay></video>
 
 <script>
+
     // WebSocket接続のクラス
     class SendData {
         constructor(socket, clientID) {
@@ -59,7 +60,9 @@
     }
 
     // WebSocket接続の確立
-    const socket = new WebSocket(`ws://${window.location.host}/ws`);
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const host = window.location.host;
+    const socket = new WebSocket(`${protocol}://${host}/ws`);
     let sendDataInstance;
 
     socket.onopen = () => {

@@ -40,8 +40,11 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const host = window.location.host;
+
         // WebSocket接続の確立
-        const socket = new WebSocket("ws://" + window.location.host + "/ws-monitor");
+        const socket = new WebSocket(`${protocol}://${host}/ws-monitor`);
 
         // 時系列データを保存するためのオブジェクト
         const clientDataHistory = {}; // { userId: { labels: [], datasets: {} } }

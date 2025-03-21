@@ -10,7 +10,7 @@ import uuid
 import asyncio
 from fastapi.staticfiles import StaticFiles
 import argparse
-
+from starlette.exceptions import HTTPException as StarletteHTTPException  # ★これを追加
 app = FastAPI()
 
 # /client/static 以下に静的ファイルを配置して提供する
@@ -19,6 +19,8 @@ app.mount("/client", StaticFiles(directory="client", html=True), name="client")
 
 # clientディレクトリ内のテンプレートを扱う
 monitor_template = Jinja2Templates(directory="monitor")
+error_temp = Jinja2Templates(directory="other")
+home_temp = Jinja2Templates(directory="other")
 
 # グローバル変数
 clients = set()
@@ -104,8 +106,33 @@ async def websocket_endpoint(websocket: WebSocket):
 async def monitor(request: Request):
     return monitor_template.TemplateResponse("monitor.html", {"request": request})
 
+# エラーメッセージ辞書（必要に応じて追加）
+ERROR_MESSAGES = {
+    404: "お探しのページは見つかりませんでした。",
+    500: "サーバー内部でエラーが発生しました。",
+    403: "アクセスが拒否されました。",
+    400: "リクエストが不正です。",
+}
 
-import argparse
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    code = exc.status_code
+    message = ERROR_MESSAGES.get(code, "予期しないエラーが発生しました。")
+
+    return error_temp.TemplateResponse(
+        "Error.html",
+        {
+            "request": request,
+            "error_code": code,
+            "message": message,
+        },
+        status_code=code
+    )
+
+@app.get("/", response_class=HTMLResponse)
+async def read_home(request: Request):
+    return home_temp.TemplateResponse("home.html", {"request": request})
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the FastAPI server.")

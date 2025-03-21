@@ -29,9 +29,12 @@ var sending_param = [];
 var last_write = new Date();
 var write_delay = 33;
 
+const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+const host = window.location.host;
+
 /*推論開始前のサーバー接続処理*/
     // WebSocket接続の確立
-    const socket = new WebSocket(`ws://${window.location.host}/ws`);
+    const socket = new WebSocket(`${protocol}://${host}/ws`);
     let sendDataInstance;
 
     socket.onopen = () => {

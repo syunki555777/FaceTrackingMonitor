@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ホーム</title>
+  <style>
+      body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  color: #333;
+}
+
+.container {
+  text-align: center;
+  animation: fadeIn 1.5s ease;
+}
+
+h1 {
+  font-size: 10rem;
+  margin: 0;
+  color: #ff6b6b;
+  animation: popIn 0.8s ease-out;
+}
+
+p {
+  font-size: 1.5rem;
+  margin: 1rem 0;
+}
+
+.home-button {
+  display: inline-block;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background-color: #4a90e2;
+  color: white;
+  border-radius: 30px;
+  text-decoration: none;
+  font-weight: bold;
+  transition: background 0.3s ease;
+}
+
+.home-button:hover {
+  background-color: #357ab8;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes popIn {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+    .description {
+      font-size: 1rem;
+      max-width: 600px;
+      margin: 1rem auto;
+      line-height: 1.6;
+      color: #444;
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .home-button {
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      border-radius: 30px;
+      background-color: #4a90e2;
+      color: white;
+      text-decoration: none;
+      font-weight: bold;
+      transition: background 0.3s ease;
+    }
+
+    .home-button:hover {
+      background-color: #357ab8;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 2.5rem;
+      }
+      .description {
+        padding: 0 1rem;
+        font-size: 0.95rem;
+      }
+      .button-group {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ようこそ</h1>
+    <div class="description">
+      <!-- ← ここに自由に説明文を記述してください -->
+      <p>FaceTrackingMonitorは、Mediapipeによるリアルタイムデータ収集と可視化を行うツールです。</p>
+    </div>
+
+    <div class="button-group">
+      <a href="/client" class="home-button">Client 画面へ</a>
+      <a href="/monitor" class="home-button">Monitor 画面へ</a>
+    </div>
+  </div>
+</body>
+</html>
