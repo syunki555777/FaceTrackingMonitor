@@ -85,8 +85,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         # 古いデータを削除（先頭から余分な数だけ取り除く）
                         client_data_store[user_id]["data"] = client_data_store[user_id]["data"][-200:]
 
-                    print(f"更新されたデータ: {user_id} -> {samples}")
-                    print(f"現在のデータ件数（{user_id}）: {len(client_data_store[user_id]['data'])}")
+                    #print(f"更新されたデータ: {user_id} -> {samples}")
+                    #print(f"現在のデータ件数（{user_id}）: {len(client_data_store[user_id]['data'])}")
+
                 else:
                     print("無効なデータ形式: 必要なキーが揃っていません")
 
