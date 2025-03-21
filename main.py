@@ -4,23 +4,27 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 import os
 import json
-from typing import Dict
-import hashlib
+from typing import Dict, List
 import pandas as pd
 import uuid
 import asyncio
+from fastapi.staticfiles import StaticFiles
+
 app = FastAPI()
 
+# /client/static 以下に静的ファイルを配置して提供する
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "client")
+app.mount("/client", StaticFiles(directory="client", html=True), name="client")
+
 # clientディレクトリ内のテンプレートを扱う
-client_directory = "client"
-client_template = Jinja2Templates(directory=client_directory)
 monitor_template = Jinja2Templates(directory="monitor")
 
 # グローバル変数
 clients = set()
 monitors = set()
-user_data_df = pd.DataFrame(columns=["client_id", "name","ip"])
+user_data_df = pd.DataFrame(columns=["client_id", "name", "ip"])
 client_data_store = {}  # 各クライアントの最新データを保存する辞書
+
 
 @app.websocket("/ws-monitor")
 async def monitor_websocket_endpoint(websocket: WebSocket):
@@ -32,6 +36,7 @@ async def monitor_websocket_endpoint(websocket: WebSocket):
         while True:
             await asyncio.sleep(1)  # 1秒間隔で送信
             if client_data_store:  # クライアントデータが存在する場合のみ送信
+                # モニタリングデータをすべて送信
                 all_client_data = json.dumps(client_data_store)  # 全クライアントの最新データをJSONとして送信
                 await websocket.send_text(all_client_data)
     except WebSocketDisconnect:
@@ -46,62 +51,52 @@ async def websocket_endpoint(websocket: WebSocket):
     # WebSocket接続を受け入れる
     await websocket.accept()
 
+    user_id = ""
+
     try:
         while True:
             raw_data = await websocket.receive_text()
-            #print(f"受信データ: {raw_data}")
-
-            # JSONとして解析し、クライアントデータを保存
             try:
+                # JSONのデコード
                 data = json.loads(raw_data)
-                client_id = data.get("client_id")  # クライアントID
-                client_values = data.get("data")  # データ（タイトルと値）
 
-                if client_id and isinstance(client_values, dict):
-                    # クライアントのデータを更新/登録
-                    client_data_store[client_id] = client_values
-                    # print(f"更新されたデータ: {client_id} -> {client_values}")
+                # `user_id`, `timestamp`, `samples`を取得
+                user_id = data.get("user_id")
+                timestamp = data.get("timestamp")
+                samples = data.get("samples")
+
+                # 構造が正しいか検証
+                if user_id and timestamp and isinstance(samples, list):
+                    # ユーザーのデータが存在しない場合、新規作成
+                    if user_id not in client_data_store:
+                        client_data_store[user_id] = {
+                            "user_id": user_id,
+                            "data": []
+                        }
+
+                    # `samples`のデータを追加
+                    client_data_store[user_id]["data"].extend(samples)
+
+                    # データの容量を200件に制限
+                    if len(client_data_store[user_id]["data"]) > 200:
+                        # 古いデータを削除（先頭から余分な数だけ取り除く）
+                        client_data_store[user_id]["data"] = client_data_store[user_id]["data"][-200:]
+
+                    print(f"更新されたデータ: {user_id} -> {samples}")
+                    print(f"現在のデータ件数（{user_id}）: {len(client_data_store[user_id]['data'])}")
                 else:
-                    print("無効なデータ形式、スキップします")
+                    print("無効なデータ形式: 必要なキーが揃っていません")
 
             except json.JSONDecodeError:
-                print("JSON形式が無効です。データをスキップ")
-                continue
-
+                print("JSON形式が無効です。データをスキップ:", raw_data)
     except WebSocketDisconnect:
         # WebSocket切断時の処理
-        print(f"クライアント {getattr(websocket.client, 'host', '不明')} が切断しました")
-        # clients内にWebSocketが存在する場合のみ削除
-        if websocket in clients:
-            clients.remove(websocket)
-        # クライアントのデータを削除
-        client_host = getattr(websocket.client, "host", None)
-        if client_host in client_data_store:
-            del client_data_store[client_host]
+        print(f"クライアント {user_id or '不明'} が切断しました")
+        # クライアントのデータ削除（`user_id` ベースで処理）
+        if user_id and user_id in client_data_store:
+            del client_data_store[user_id]
+            print(f"クライアントデータ（{user_id}）の削除を完了しました")
 
-        print(f"クライアントデータ（{client_host}）の削除を完了しました")
-
-
-
-
-@app.get("/client/{file_name:path}", response_class=HTMLResponse)
-async def serve_client_templates(file_name: str, request: Request):
-    """
-    clientディレクトリ内のHTMLファイルを動的に読み込むエンドポイント
-    """
-    # デフォルトファイル名に対応 (e.g., /client --> /client/index.html)
-    if not file_name:
-        file_name = "index.html"
-
-    # 指定されたファイルパスを構築
-    file_path = os.path.join(client_directory, file_name)
-
-    # ファイルの存在を確認
-    if not os.path.isfile(file_path):
-        return HTMLResponse(status_code=404, content="File not found")
-
-    # 指定されたHTMLテンプレートをロード
-    return client_template.TemplateResponse(file_name, {"request": request})
 
 
 @app.get("/monitor")
@@ -110,4 +105,4 @@ async def monitor(request: Request):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8001)

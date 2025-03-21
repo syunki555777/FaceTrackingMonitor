@@ -21,25 +21,63 @@
 <video id="video" autoplay></video>
 
 <script>
+    // WebSocket接続のクラス
+    class SendData {
+        constructor(socket, clientID) {
+            this.socket = socket;
+            this.clientID = clientID;
+            this.samples = []; // JSON形式の'data samples'を保持
+        }
+
+        // データを追加するメソッド
+        addSample(data) {
+            const subTimestamp = new Date().toISOString(); // マイクロタイムスタンプ
+            this.samples.push({
+                sub_timestamp: subTimestamp, // サブタイムスタンプ
+                data: data                   // データ配列
+            });
+        }
+
+        // WebSocketを通じてJSONデータを送信
+        send() {
+            if (this.socket.readyState === WebSocket.OPEN && this.clientID) {
+                const payload = JSON.stringify({
+                    user_id: this.clientID,  // ユーザーID
+                    timestamp: new Date().toISOString(), // 全体のタイムスタンプ
+                    samples: this.samples   // サンプルデータ
+                });
+
+                this.socket.send(payload);   // WebSocketでデータを送信
+                console.log("送信データ:", payload);
+
+                // 送信後、サンプルをリセット
+                this.samples = [];
+            } else {
+                console.warn("WebSocket接続が閉じています。送信できません。");
+            }
+        }
+    }
+
     // WebSocket接続の確立
     const socket = new WebSocket(`ws://${window.location.host}/ws`);
+    let sendDataInstance;
+
     socket.onopen = () => {
         console.log("WebSocket 接続成功");
-    };
 
-    socket.onerror = error => {
-        console.error("WebSocket エラー:", error);
-        alert("サーバーへの接続中に問題が発生しました。再読み込みして接続を確認してください。");
-    };
+        // 現在のクライアントID（UUID）を取得または生成
+        let userID = getCookie("user_id");
+        if (!userID) {
+            userID = generateUUID();
+            setCookie("user_id", userID, 365); // 有効期限365日
+            console.log("新しいUUIDを生成しクッキーに保存:", userID);
+        } else {
+            console.log("既存のUUIDをクッキーから取得:", userID);
+        }
 
-    // UUIDの生成（簡易版）
-    function generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0,
-                v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
+        // SendDataクラスのインスタンス作成
+        sendDataInstance = new SendData(socket, userID);
+    };
 
     // クッキー操作関数
     function getCookie(name) {
@@ -54,67 +92,56 @@
         document.cookie = `${name}=${value}; expires=${d.toUTCString()}; path=/`;
     }
 
-    // UUIDの取得または生成
-    let userID = getCookie("user_id");
-    if (!userID) {
-        userID = generateUUID();
-        setCookie("user_id", userID, 365); // 有効期限365日
-        console.log("新しいUUIDを生成しクッキーに保存:", userID);
-    } else {
-        console.log("既存のUUIDをクッキーから取得:", userID);
+    // UUIDの生成（簡易版）
+    function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0,
+                v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
     }
 
-    // データを送信する関数
-    function sendUserData(data) {
-        if (socket.readyState === WebSocket.OPEN && userID) {
-            const payload = JSON.stringify({
-                client_id: userID, // クライアントを識別するUUID
-                data: data         // サーバーに送信するデータオブジェクト
-            });
-            socket.send(payload); // WebSocketでサーバーに送信
-            console.log("送信したデータ:", payload); // デバッグ用
-        } else {
-            console.warn("WebSocket接続が閉じています。データを送信できません。");
-        }
-    }
-
-    // カメラデバイスを設定
+    // カメラデバイスの設定
     async function setupCamera() {
         const video = document.getElementById("video");
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
     }
 
-    // 複数データをシミュレーションして送信
+    // ランダムデータを生成して送信
     async function monitorAndSendData() {
         let blinkCount = 0;
 
-        // データ取得・送信を1秒ごとに実行
+        // データ取得・送信を250msごとに実行
         setInterval(() => {
             // ダミーデータの生成
-            const randomValue = Math.floor(Math.random() * 100); // ランダム値（例のため）
-
-            // 瞬きカウント（ダミーデータ）
+            const randomValue = Math.floor(Math.random() * 100);
             blinkCount += Math.random() > 0.9 ? 1 : 0;
 
             // HTML上にデータを反映
             document.getElementById("blink_count").innerText = blinkCount;
             document.getElementById("random_value").innerText = randomValue;
 
-            // サーバーに送信するデータ作成
-            const dataToSend = {
-                "Blink Count": blinkCount,
-                "Random Value": randomValue
-            };
+            // SendDataインスタンスにデータ記録
+            const sampleData = [
+                { name: "heart_rate", value: randomValue, unit: "bpm" },
+                { name: "blink_count", value: blinkCount, unit: "count" }
+            ];
+            sendDataInstance.addSample(sampleData);
 
-            // サーバーに送信
-            sendUserData(dataToSend);
-        }, 250); // 1秒ごとに送信
+            // 1秒ごとにまとめてデータ送信
+            if (sendDataInstance.samples.length >= 4) {
+                console.log(sendDataInstance);
+                sendDataInstance.send(); // 4つのサンプルが揃ったら送信
+            }
+        }, 250);
     }
 
     // カメラを起動してデータ監視・送信の準備
     setupCamera()
-        .then(monitorAndSendData)
+        .then(() => {
+            monitorAndSendData();
+        })
         .catch(error => {
             console.error("カメラ初期化エラー:", error);
             alert("カメラへのアクセスを許可してください。");

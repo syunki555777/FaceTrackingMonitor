@@ -32,9 +32,22 @@
   - `Mediapipe`（クライアントでの瞬き検出等に利用可能）
 
 ## ファイル構造
-. ├── main.py # サーバーサイドロジック ├── templates/ │ ├── index.html # クライアントデータ送信用ページ │ ├── monitor.html # データモニタリング用ページ └── README.md # 本ファイル
-
-
+```
+.
+├── main.py                # サーバーサイドロジック
+├── templates/             # HTMLテンプレートを格納するディレクトリ
+│   ├── [index.html](templates/index.html)         # クライアントデータ送信用ページ
+│   ├── [monitor.html](templates/monitor.html)     # データモニタリング用ページ
+├── static/                # 静的ファイル（CSSやJavaScript）格納用ディレクトリ
+│   ├── css/
+│   │   ├── [styles.css](static/css/styles.css)     # 共通のスタイルシート
+│   └── js/
+│       ├── [index.js](static/js/index.js)         # クライアント処理用スクリプト
+│       ├── [monitor.js](static/js/monitor.js)     # モニタリング画面処理用スクリプト
+├── [README.md](README.md)              # 本ファイル
+├── [requirements.txt](requirements.txt)       # 必要なPythonパッケージのリスト
+└── [LICENSE](LICENSE)                # ライセンス情報
+```
 ### ファイル詳細
 - **`main.py`（バックエンド）**  
   - `/ws`: クライアントがデータを送信するためのWebSocketエンドポイント。  

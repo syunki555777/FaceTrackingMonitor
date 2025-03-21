@@ -21,6 +21,195 @@ var graphDelay = 16;
 
 var chart;
 
+//送信する値のデータを記録
+//測定値を送信するレート(秒)
+var send_rate = 1;
+var sending = false;
+var sending_param = [];
+var last_write = new Date();
+var write_delay = 33;
+
+/*推論開始前のサーバー接続処理*/
+    // WebSocket接続の確立
+    const socket = new WebSocket(`ws://${window.location.host}/ws`);
+    let sendDataInstance;
+
+    socket.onopen = () => {
+
+        // 現在のクライアントID（UUID）を取得または生成
+        let userID = getCookie("user_id");
+        if (!userID) {
+            userID = generateUUID();
+            setCookie("user_id", userID, 365); // 有効期限365日
+            console.log("新しいUUIDを生成しクッキーに保存:", userID);
+        } else {
+            console.log("既存のUUIDをクッキーから取得:", userID);
+        }
+
+        notice("接続しました。","ユーザー："+ userID,false)
+        console.log("WebSocket 接続成功");
+
+        // SendDataクラスのインスタンス作成
+        sendDataInstance = new SendData(socket, userID);
+    };
+
+    // WebSocket接続のクラス
+    class SendData {
+        constructor(socket, clientID) {
+            this.socket = socket;
+            this.clientID = clientID;
+            this.samples = []; // JSON形式の'data samples'を保持
+        }
+
+        // データを追加するメソッド
+        addSample(data) {
+            const subTimestamp = new Date().toISOString(); // マイクロタイムスタンプ
+            this.samples.push({
+                sub_timestamp: subTimestamp, // サブタイムスタンプ
+                data: data                   // データ配列
+            });
+        }
+
+        // WebSocketを通じてJSONデータを送信
+        send() {
+            if(this.samples.length === 0){
+                return;
+            }
+            if (this.socket.readyState === WebSocket.OPEN && this.clientID) {
+                const payload = JSON.stringify({
+                    user_id: this.clientID,  // ユーザーID
+                    timestamp: new Date().toISOString(), // 全体のタイムスタンプ
+                    samples: this.samples   // サンプルデータ
+                });
+
+                this.socket.send(payload);   // WebSocketでデータを送信
+                //console.log("送信データ:", payload);
+
+                // 送信後、サンプルをリセット
+                this.samples = [];
+            } else {
+                console.warn("WebSocket接続が閉じています。送信できません。");
+            }
+        }
+    }
+// WebSocket接続の確立
+
+    socket.onerror = error => {
+        console.error("WebSocket エラー:", error);
+        notice("サーバー通信","サーバーに到達できませんでした。",true);
+    };
+
+    // UUIDの生成（簡易版）
+    function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0,
+                v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    // クッキー操作関数
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+
+    function setCookie(name, value, days) {
+        const d = new Date();
+        d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
+        document.cookie = `${name}=${value}; expires=${d.toUTCString()}; path=/`;
+    }
+
+    // データ送信のサンプル
+    async function sampleSendData() {
+        let blinkCount = 0;
+
+        // データ取得・送信を250msごとに実行
+        setInterval(() => {
+            // SendDataインスタンスにデータ記録
+            const sampleData = [
+                { name: "blink_rate", value: randomValue, unit: "%" },
+            ];
+            sendDataInstance.addSample(sampleData);
+
+            // 1秒ごとにまとめてデータ送信
+            if (sendDataInstance.samples.length >= 4) {
+                sendDataInstance.send(); // 4つのサンプルが揃ったら送信
+            }
+        }, 250);
+    }
+
+//送信レートに合わせて定期的に実行
+let sender = null;
+
+function SendStart(){
+    if(sendDataInstance) {
+        sending = true;
+        if (sender === null) {
+            sender = setInterval(function () {
+                if (sending === true) {
+                    sendDataInstance.send();
+                }
+            }, 1000 * send_rate);
+        }
+    }else{
+        sending = false;
+        console.error("データの送信に失敗しました。インスタンスが空です。" + sendDataInstance);
+    }
+}
+
+function StopSending(){
+    sending = false;
+    if(sender !== null){
+        clearInterval(sender);
+        sender = null;
+    }
+}
+
+
+//関数群//
+// 頭部傾きを計算する関数
+function calculateHeadTiltAngle(landmarks) {
+    // ランドマークの存在確認
+    if (!landmarks || landmarks.length === 0) {
+        console.warn("ランドマークデータが存在しません。");
+        return { yaw: 0, pitch: 0, roll: 0 }; // デフォルト値を返す
+    }
+
+    // ランドマークを手動で指定
+    const leftEyeInner = landmarks[359]; // 左目内側
+    const rightEyeInner = landmarks[259]; // 右目内側
+    const noseTip = landmarks[1]; // 鼻先
+
+    // ランドマークの妥当性確認
+    if (!leftEyeInner || !rightEyeInner || !noseTip) {
+        console.error("必要なランドマークが不足しています。");
+        return { yaw: 0, pitch: 0, roll: 0 }; // デフォルト値を返す
+    }
+
+    // *** Yaw（左右の傾き）の計算 ***
+    // 左目内側と右目内側のポジションの差から計算
+    const deltaX = rightEyeInner.x - leftEyeInner.x;
+    const deltaY = rightEyeInner.y - leftEyeInner.y;
+    const yaw = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+
+    // *** Roll（回転）の計算 ***
+    // 水平線と両目の傾きを比較
+    const eyeMidpointX = (leftEyeInner.x + rightEyeInner.x) / 2; // 両目の中心点（X）
+    const eyeMidpointY = (leftEyeInner.y + rightEyeInner.y) / 2; // 両目の中心点（Y）
+
+    // 「両目の中心線」が水平線とどの程度回転しているか
+    const roll = Math.atan2(leftEyeInner.y - rightEyeInner.y, leftEyeInner.x - rightEyeInner.x) * (180 / Math.PI);
+
+    // *** Pitch（上下の傾き）の計算 ***
+    // 鼻先と「両目の平均」の上下位置の差を使う
+    const noseToEyesAverageY = (noseTip.y + leftEyeInner.y + rightEyeInner.y) / 3;
+    const deltaYPitch = noseToEyesAverageY - noseTip.y;
+    const pitch = Math.atan2(deltaYPitch, deltaX) * (180 / Math.PI);
+
+    return { yaw, pitch, roll };
+}
 
 let lowEnergyMode = false
 // Before we can use Hand Landmarker class we must wait for it to finish
@@ -111,14 +300,23 @@ function enableCam(event) {
         $("#webcamButton").hide();
 
         //console.log("console:" + $('option:selected').val());
+
+        //カメラが使用できた場合処理
+        //データの送信を開始する。
+        SendStart();
+
+
+
     }).catch((e)=>{
         if(e.name === "NotAllowedError"){
 
             notice("権限がありません。","カメラの権限が拒否されています。設定から許可してください。",true)
+            StopSending();
         }else{
 
             notice("利用できません。","カメラにアクセスできませんでした。",true)
             notice(e.title,e.message,true)
+            StopSending();
         }
         console.log(e)
         webcamRunning = false;
@@ -153,13 +351,16 @@ function switchCam(b){
         video.addEventListener("loadeddata", predictWebcam);
 
         //console.log("console:" + $('option:selected').val());
+        SendStart();
     }).catch((e)=>{
         if(e.name === "NotAllowedError"){
 
             notice("権限がありません。","カメラの権限が拒否されています。設定から許可してください。",true)
+            StopSending();
         }else{
 
             notice("利用できません。","カメラにアクセスできませんでした。",true)
+            StopSending();
             notice(e.title,e.message,true)
         }
         console.log(e)
@@ -181,52 +382,74 @@ async function predictWebcam() {
     // Now let's start detecting the stream.
     if (runningMode === "IMAGE") {
         runningMode = "VIDEO";
-        await faceLandmarker.setOptions({ runningMode: runningMode });
+        await faceLandmarker.setOptions({runningMode: runningMode});
     }
     let startTimeMs = performance.now();
     if (lastVideoTime !== video.currentTime) {
         lastVideoTime = video.currentTime;
         results = faceLandmarker.detectForVideo(video, startTimeMs);
     }
+    let headTiltAngles = { yaw: 0, pitch: 0, roll: 0 };
     if (results.faceLandmarks) {
         for (const landmarks of results.faceLandmarks) {
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#C0C0C070", lineWidth: 1 });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, { color: "#FF3030" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, { color: "#FF3030" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, { color: "#30FF30" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, { color: "#30FF30" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, { color: "#E0E0E0" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, { color: "#E0E0E0" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, { color: "#FF3030" });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, { color: "#30FF30" });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, {
+                color: "#C0C0C070",
+                lineWidth: 1
+            });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, {color: "#FF3030"});
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, {color: "#FF3030"});
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, {color: "#30FF30"});
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, {color: "#30FF30"});
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, {color: "#E0E0E0"});
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, {color: "#E0E0E0"});
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, {color: "#FF3030"});
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, {color: "#30FF30"});
+
+            //頭部動揺の計算
+            // 頭部傾き角度を計算
+            headTiltAngles = calculateHeadTiltAngle(landmarks);
+            // 必要に応じてページ内に反映
+            document.getElementById("head_tilt_yaw").innerText = `Yaw (左右): ${headTiltAngles.yaw.toFixed(2)}°`;
+            document.getElementById("head_tilt_pitch").innerText = `Pitch (上下): ${headTiltAngles.pitch.toFixed(2)}°`;
+            document.getElementById("head_tilt_roll").innerText = `Roll (回転): ${headTiltAngles.roll.toFixed(2)}°`;
+        }
+
+        if(results.faceBlendshapes.length > 0){
+            //データの書き込みレートを超えないように制御
+            const now = new Date();
+
+            //console.log(now - last_write)
+
+            console.log(results.faceBlendshapes[0].categories)
+
+            if(now - last_write > write_delay){
+                //データをペイロードに入れる
+                if(sendDataInstance && sending){
+                        //console.log("ペイロードに値が挿入されました。" + results.faceBlendshapes[0].categories[9].score)
+                        const sendData = [
+                        { name: "eye_blink_left", value: results.faceBlendshapes[0].categories[9].score, unit: "%" },
+                        { name: "eye_blink_right", value: results.faceBlendshapes[0].categories[10].score, unit: "%" },
+
+                    ];
+                        sendDataInstance.addSample(sendData);
+                }
+                last_write = now;
+            }
+
+            drawBlendShapes(videoBlendShapes, results.faceBlendshapes);
+        }
+        // Call this function again to keep predicting when the browser is ready.
+        if (webcamRunning === true) {
+            window.requestAnimationFrame(predictWebcam);
         }
     }
-    drawBlendShapes(videoBlendShapes, results.faceBlendshapes);
-    // Call this function again to keep predicting when the browser is ready.
-    if (webcamRunning === true) {
-        window.requestAnimationFrame(predictWebcam);
-    }
 }
+
 function drawBlendShapes(el, blendShapes) {
     if (!blendShapes.length) {
         return;
     }
-    if(outputBlendshapeGraph) {
-        //console.log(blendShapes[0]);
-        let htmlMaker = "";
-        var i = 0;
-        blendShapes[0].categories.map((shape) => {
-            htmlMaker += `
-      <li class="blend-shapes-item">
-        <span class="blend-shapes-label">${shape.displayName || shape.categoryName}[${i}]</span>
-        <span class="blend-shapes-value" style="width: calc(${+shape.score * 100}% - 120px)">${(+shape.score).toFixed(4)}</span>
-      </li>
-    `;
-            i++;
-        });
 
-        el.innerHTML = htmlMaker;
-    }
     //グラフにBlendShapeの分だけDatasetを生成
         if(AxisData.length <= 0){
             blendShapes[0].categories.map((shape) => {
@@ -282,7 +505,6 @@ function createChart(AxisData) {
                                                 {
                                                     x: Date.now(),
                                                     y: blendShapesValue[i]
-
                                                 }
                                             );
                                         }
@@ -350,6 +572,7 @@ function GetCameraID(){
         $("#cameraSelector").append(`<option value="${deviceId}">権限がありません。</option>`)
     });
 }
+
 GetCameraID();
 
 //カメラの選択項目の取得
@@ -445,9 +668,15 @@ function notice(title,detail,error){
             $(el).remove();
         });
     }
-
 }
 
 $("#historyDelete").on("click",()=>{
     $("#noticeHistory").nextAll().remove();
 })
+
+
+//最後に実行
+    socket.onclose = () => {
+        notice("Webソケット通信","WEBソケット通信が切断されました。",true)
+
+    };

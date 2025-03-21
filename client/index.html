@@ -1,42 +1,45 @@
-<!-- 工学院大学 所有 このプログラムおよびHTMLは著作権により保護されています。不正に悪用、転用する行為はおやめください。
-生体情報処理研究室 2024 鈴木 -->
+<!-- 工学院大学 所有 このプログラムおよびHTMLは著作権により保護されています。不正に悪用、転用する行為はおやめください。 -->
+<!-- 生体情報処理研究室 2024 鈴木 -->
 <!DOCTYPE html>
-<html lang="ja" >
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <link rel="stylesheet" href="./style.css">
-
   <meta http-equiv="Cache-control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-
   <title>Face Landmarker</title>
+
+  <!-- ライブラリ読み込み -->
   <script src="script/libs/jquery-3.7.1.min.js"></script>
-  <!--- グラフ表示用-->
   <script src="script/libs/chart.js"></script>
   <script src="script/libs/chartjs-adapter-date-fns.bundle.min.js"></script>
   <script src="script/libs/chartjs-plugin-streaming.js"></script>
 
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 </head>
+
 <body>
-  <div id="OverflowMenu" class="">
+  <div id="OverflowMenu">
     <!--設定用メニュー-->
     <ul>
-      <li class="selectable" id = "lowEnergyMode">
-        <div>省電力モード
-        <div>処理量を減らします。</div>
+      <li class="selectable" id="lowEnergyMode">
+        <div>
+          省電力モード
+          <div>処理量を減らします。</div>
         </div>
         <div>
           <label class="switch">
-            <input id= "lowEnergyModeValue" type="checkbox">
+            <input id="lowEnergyModeValue" type="checkbox">
             <span class="slider round"></span>
           </label>
         </div>
       </li>
       <li class="selectable">
-        <div>使用カメラ
-          <div>カメラOFFを選択すると</br>処理を停止します。</div>
+        <div>
+          使用カメラ
+          <div>カメラOFFを選択すると<br>処理を停止します。</div>
         </div>
         <div>
           <select id="cameraSelector">
@@ -45,78 +48,75 @@
         </div>
       </li>
       <li class="selectable">
-        <div>csv書き出し先
+        <div>
+          csv書き出し先
           <div>csvファイルの書き出し先を登録します。</div>
         </div>
-        <div>
-        </div>
+        <div></div>
       </li>
       <li>
-        <div>記録開始
-          <div>設定するには</br>書き出し用</div>
+        <div>
+          記録開始
+          <div>設定するには<br>書き出し用</div>
+        </div>
+        <div></div>
+      </li>
+      <li id="noticeHistory">
+        <div>
+          通知履歴
+          <div>新しい順に通知が記録されていきます。</div>
         </div>
         <div>
+          <button id="historyDelete">通知を削除</button>
         </div>
       </li>
-      <li id = "noticeHistory">
-        <div>通知履歴
-        <div>新しい順に通知が記録されていきます。</div></div>
-        <div>
-          <button id="historyDelete">
-            通知を削除
-          </button>
-        </div>
-
-      </li>
-
     </ul>
     <span class="copyLight">
-    Created by Shunki Suzuki Kogakuin University 2024.
+      Created by Shunki Suzuki Kogakuin University 2024.
     </span>
-
   </div>
-    <div class="menu">
 
-      <div id = "menuButton">
-        <img id ="sideCloseMenuButton" class="icons" src="icons/closeMenu.png" height="32" width="32"/>
-        <img id ="sideOpenMenuButton" class="icons" src="icons/openMenu.png" height="32" width="32"/>
-      </div>
-
-      <h1>Face Landmark Detection Demo</h1>
+  <div class="menu">
+    <div id="menuButton">
+      <img id="sideCloseMenuButton" class="icons" src="icons/closeMenu.png" height="32" width="32"/>
+      <img id="sideOpenMenuButton" class="icons" src="icons/openMenu.png" height="32" width="32"/>
     </div>
-    <div id="notice">
+    <h1>Face Landmark Detection Demo</h1>
+  </div>
 
+  <div id="notice"></div>
 
-    </div>
-    <div class="content">
-      <div class="Video-view">
-        <div>
+  <div class="content">
+    <div class="Video-view">
+      <div>
         <button id="webcamButton">
           <span class="mdc-button__label">カメラを開始</span>
         </button>
-
+        <div id="head_tilt_results">
+    <p id="head_tilt_yaw">Yaw (左右): -</p>
+    <p id="head_tilt_pitch">Pitch (上下): -</p>
+    <p id="head_tilt_roll">Roll (回転): -</p>
+</div>
 
         <div style="position: relative;" class="Video-frame">
           <video id="webcam" style="position: absolute" autoplay playsinline></video>
-          <canvas class="output_canvas" id="output_canvas" style="position: absolute; left: 0px; top: 0px;"></canvas>
+          <canvas class="output_canvas" id="output_canvas"
+                  style="position: absolute; left: 0px; top: 0px;"></canvas>
         </div>
-        </div>
-      </div>
-      <div class="analytics-view">
-        <h1>Analytics</h1>
-        <h2>BlendShapes Graph</h2>
-        <canvas id="myChart"></canvas>
-        <div class="blend-shapes">
-          <ul class="blend-shapes-list" id="video-blend-shapes"></ul>
-        </div>
-
-
       </div>
     </div>
-</body>
-</html>
-<!-- partial -->
-  <script type="module" src="script/script.js"></script>
 
+    <div class="analytics-view">
+      <h1>Analytics</h1>
+      <h2>BlendShapes Graph</h2>
+      <canvas id="myChart"></canvas>
+      <div class="blend-shapes">
+        <ul class="blend-shapes-list" id="video-blend-shapes"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- スクリプトはここにまとめておく -->
+  <script type="module" src="script/script.js"></script>
 </body>
 </html>

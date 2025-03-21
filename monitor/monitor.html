@@ -21,7 +21,7 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             border-radius: 8px;
             padding: 16px;
-            width: 400px;
+            width: 600px;
         }
         .client-card h2 {
             font-size: 18px;
@@ -29,46 +29,92 @@
         }
         canvas {
             max-width: 100%;
-            height: 200px;
         }
     </style>
 </head>
 <body>
-    <h1 style="text-align: center;">リアルタイム時系列データグラフ</h1>
+    <h1 style="text-align: center;">Mediapipe Monitor</h1>
     <div class="container" id="client_container"></div>
 
     <!-- Chart.jsを読み込み -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
+        // WebSocket接続の確立
         const socket = new WebSocket("ws://" + window.location.host + "/ws-monitor");
 
         // 時系列データを保存するためのオブジェクト
-        const clientDataHistory = {}; // { clientId: { label: [], data: { key: [] } } }
+        const clientDataHistory = {}; // { userId: { labels: [], datasets: {} } }
         let charts = {}; // クライアントごとにChartインスタンスを保持
 
         // WebSocketが開いたときの処理
-        socket.onopen = function() {
+        socket.onopen = function () {
             console.log("WebSocket接続が確立しました。");
         };
 
-        // データ受信時
+        // データ受信時の処理
         socket.onmessage = function (event) {
             try {
-                const data = JSON.parse(event.data);
+                // 受信データの解析
+                const responseData = JSON.parse(event.data);
+                console.log(responseData);
+                Object.keys(responseData).forEach(parent => {
+                    // 必須フィールドの存在確認
+                    if (!responseData[parent] || !responseData[parent].data || !responseData[parent].user_id) {
+                        console.warn("WebSocket: 必須フィールドが不足しています。無効なデータ:", responseData[parent]);
+                        return;
+                    }
 
-                Object.entries(data).forEach(([clientId, clientData]) => {
-                    const currentTime = new Date().toLocaleTimeString(); // 現在の時刻
-                    const newDatasetValues = Object.values(clientData).map(value => {
-                        return typeof value === "string" ? parseFloat(value.replace(/[^\d.-]/g, '')) : value;
+                    const { data: samples, user_id } = responseData[parent];
+
+                    // user_idを利用して親（ユーザー）ごとのデータにアクセス
+                    if (!clientDataHistory[user_id]) {
+                        // ユーザーごとの履歴データが存在しない場合、新規作成
+                        clientDataHistory[user_id] = {
+                            user_id: user_id, // ユーザーIDを追跡
+                            labels: [], // このユーザーの時系列データ（ラベル）
+                            datasets: {} // このユーザー内のデータセット
+                        };
+                    }
+
+                    // ユーザー情報を参照（例：IDと受信したデータの確認）
+                    console.log(`User ID: ${user_id} のデータを処理しています。`);
+
+                    // データ処理ロジック
+                    samples.forEach(sample => {
+                        const { sub_timestamp, data } = sample;
+
+                        // 各データ項目を処理
+                        data.forEach(({ name, value, unit }) => {
+                            const datasetKey = `${name} (${unit})`; // データキー例: "heart_rate (bpm)"
+
+                            if (!clientDataHistory[user_id].datasets[datasetKey]) {
+                                clientDataHistory[user_id].datasets[datasetKey] = [];
+                            }
+
+                            // データを追加
+                            clientDataHistory[user_id].datasets[datasetKey].push(value);
+
+                            // 最大保持件数を超えた場合、古いデータを削除
+                            if (clientDataHistory[user_id].datasets[datasetKey].length > 200) {
+                                clientDataHistory[user_id].datasets[datasetKey].shift();
+                            }
+                        });
+
+                        // `sub_timestamp` をラベルに追加
+                        clientDataHistory[user_id].labels.push(new Date(sub_timestamp).toLocaleTimeString());
+
+                        // ラベルが最大件数を超える場合の処理
+                        if (clientDataHistory[user_id].labels.length > 200) {
+                            clientDataHistory[user_id].labels.shift();
+                        }
                     });
 
-                    // チャートが存在する場合はデータを更新
-                    if (charts[clientId]) {
-                        updateChartData(charts[clientId], currentTime, newDatasetValues);
+                    // チャートを更新
+                    if (charts[user_id]) {
+                        updateChartData(charts[user_id], clientDataHistory[user_id]);
                     } else {
-                        // チャートが存在しない場合は新規作成
-                        drawChart(clientId, clientData);
+                        drawChart(user_id, clientDataHistory[user_id]);
                     }
                 });
             } catch (e) {
@@ -76,79 +122,41 @@
             }
         };
 
-        // グラフを描画する関数
-        function drawChart(clientId, initialData) {
+        // グラフを描画する関数（初期化）
+        function drawChart(userId, initialData) {
             const container = document.getElementById("client_container");
 
-            // クライアントカードの生成
-            let card = document.getElementById(`card_${clientId}`);
+            // クライアントごとのカード作成
+            let card = document.getElementById(`card_${userId}`);
             if (!card) {
                 card = document.createElement("div");
                 card.className = "client-card";
-                card.id = `card_${clientId}`;
+                card.id = `card_${userId}`;
                 container.appendChild(card);
 
                 const title = document.createElement("h2");
-                title.textContent = `クライアントID: ${clientId}`;
+                title.textContent = `ユーザーID: ${userId}`;
                 card.appendChild(title);
 
                 const canvas = document.createElement("canvas");
-                canvas.id = `chart_${clientId}`;
+                canvas.id = `chart_${userId}`;
                 card.appendChild(canvas);
             }
 
-            // 初期データセット準備
-            const labels = []; // 最初は空のラベル（時刻）
-            const datasets = Object.entries(initialData).map(([key, values]) => ({
-                label: key, // 温度、湿度などのキー
-                data: [], // 初期は空
-                fill: false,
-                borderColor: randomColor(),
-                tension: 0.1
-            }));
-
-            const ctx = document.getElementById(`chart_${clientId}`).getContext('2d');
-            charts[clientId] = new Chart(ctx, {
-                type: 'line', // 折れ線グラフ
-                data: {
-                    labels: labels,
-                    datasets: datasets
-                },
-                options: {
-                    responsive: true,
-                    animation: false, // アニメーションの有効化
-                    scales: {
-                        x: {
-                            title: { display: true, text: "時刻" }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            title: { display: true, text: "値" }
-                        }
-                    }
-                }
-            });
-        }
-
             // データセットを生成
-            const datasets = Object.entries(clientDataHistory[clientId].datasets).map(([key, values]) => ({
-                label: key, // 例: 温度、湿度
-                data: values, // 各キーに対応する時系列データ
+            const datasets = Object.entries(initialData.datasets).map(([key, values]) => ({
+                label: key, // 例: "heart_rate (bpm)"
+                data: values, // 初期値リスト
                 fill: false,
                 borderColor: randomColor(),
                 tension: 0.1
             }));
 
-            // グラフを再描画
-            const ctx = document.getElementById(`chart_${clientId}`).getContext('2d');
-            if (charts[clientId]) {
-                charts[clientId].destroy(); // 古いグラフを破棄
-            }
-
-            charts[clientId] = new Chart(ctx, {
+            const ctx = document.getElementById(`chart_${userId}`).getContext('2d');
+            charts[userId] = new Chart(ctx, {
                 type: 'line', // 折れ線グラフ
                 data: {
-                    labels: clientDataHistory[clientId].labels, // 時系列のラベル
+                    labels: initialData.labels, // 時系列のラベル
                     datasets: datasets
                 },
                 options: {
@@ -165,28 +173,59 @@
                     }
                 }
             });
+        }
 
 
-        function updateChartData(chart, newLabel, newDatasetValues) {
-    // ラベル（X軸）に新しい時刻を追加
-            chart.data.labels.push(newLabel); // 新しいラベル（時刻、例えば "12:00:01"）を追加
+        function updateChartData(chart, updatedData) {
+            const { labels: newLabels, datasets: newDatasets } = updatedData;
 
-            // 各データセットに対応した値を追加
-            newDatasetValues.forEach((newValue, index) => {
-                chart.data.datasets[index].data.push(newValue);
+            // 現在のラベルとデータセット
+            const currentLabels = chart.data.labels || [];
+            const currentDatasets = chart.data.datasets || [];
+
+            // 現在のラベルを効率的な検索のためにSet化
+            const existingLabels = new Set(currentLabels);
+
+            // 新しいラベルとデータを時系列順で処理
+            newLabels.forEach((newLabel, labelIndex) => {
+                if (!existingLabels.has(newLabel)) {
+                    // 新しいラベルを追加
+                    currentLabels.push(newLabel);
+
+                    Object.entries(newDatasets).forEach(([key, newValues]) => {
+                        // データセットの取得/作成
+                        let dataset = currentDatasets.find(ds => ds.label === key);
+                        if (!dataset) {
+                            // データセットが存在しない場合、初期化
+                            dataset = {
+                                label: key,
+                                data: Array(currentLabels.length - 1).fill(null), // ラベルに合わせる
+                                fill: false,
+                                borderColor: randomColor(),
+                                tension: 0.1
+                            };
+                            currentDatasets.push(dataset);
+                        }
+
+                        // データセットに対応する新しいデータを追加
+                        dataset.data.push(newValues[labelIndex] || null);
+                    });
+                }
             });
 
-            // グラフに設定された最大データ数を超えた場合、古いデータを削除
-            if (chart.data.labels.length > 100) { // 最大30件まで保持
-                chart.data.labels.shift(); // 最初のラベルを削除
-                chart.data.datasets.forEach(dataset => {
-                    dataset.data.shift(); // 各データセットの古いデータを削除
+            // ラベルが最大件数を超える場合、古いものを削除
+            if (currentLabels.length > 200) {
+                currentLabels.shift();
+                currentDatasets.forEach(dataset => {
+                    dataset.data.shift();
                 });
             }
 
             // グラフを更新
             chart.update();
         }
+
+
 
         // ランダムな色を生成する関数
         function randomColor() {
@@ -197,13 +236,13 @@
         }
 
         // WebSocketが閉じたときの処理
-        socket.onclose = function() {
+        socket.onclose = function () {
             console.warn("WebSocket接続が切断されました。");
             alert("サーバーとの接続が切断されました。ページを再読み込みしてください。");
         };
 
         // エラーが発生した場合の処理
-        socket.onerror = function(error) {
+        socket.onerror = function (error) {
             console.error("WebSocketエラー:", error);
         };
     </script>
