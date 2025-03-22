@@ -420,11 +420,6 @@ async function predictWebcam() {
         if(results.faceBlendshapes.length > 0){
             //データの書き込みレートを超えないように制御
             const now = new Date();
-
-            //console.log(now - last_write)
-
-            console.log(results.faceBlendshapes[0].categories)
-
             if(now - last_write > write_delay){
                 //データをペイロードに入れる
                 if(sendDataInstance && sending){
