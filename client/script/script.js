@@ -551,7 +551,7 @@ async function predictWebcam() {
             //
             //     const greenAverage = calculateAverage(foreheadPixels, "green");
             //     console.log(`Forehead Green Channel Average: ${greenAverage}`);
-            // }
+            }
         }
 
         if(results.faceBlendshapes.length > 0){
