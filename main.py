@@ -4,11 +4,10 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 import os
 import json
-from typing import Dict, List
 import pandas as pd
-import uuid
 import asyncio
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import argparse
 from starlette.exceptions import HTTPException as StarletteHTTPException  # ★これを追加
 app = FastAPI()
@@ -28,6 +27,15 @@ monitors = set()
 user_data_df = pd.DataFrame(columns=["client_id", "name", "ip"])
 client_data_store = {}  # 各クライアントの最新データを保存する辞書
 
+
+# CORS設定
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # すべてのオリジンを許可
+    allow_credentials=True,  # クレデンシャル（Cookieなど）を含めるかどうか
+    allow_methods=["*"],  # すべてのHTTPメソッドを許可
+    allow_headers=["*"],  # すべてのリクエストヘッダーを許可
+)
 
 @app.websocket("/ws-monitor")
 async def monitor_websocket_endpoint(websocket: WebSocket):
