@@ -32,6 +32,8 @@ var write_delay = 33;
 const protocol = window.location.protocol === "https:" ? "wss" : "ws";
 const host = window.location.host;
 
+var nowCam = 0;
+
 /*推論開始前のサーバー接続処理*/
     // WebSocket接続の確立
     const socket = new WebSocket(`${protocol}://${host}/ws`);
@@ -273,7 +275,7 @@ else {
     console.warn("getUserMedia() is not supported by your browser");
 
 }
-// Enable the live webcam view and start detection.
+
 function enableCam(event) {
     if (!faceLandmarker) {
         console.log("Wait! faceLandmarker not loaded yet.");
@@ -289,22 +291,29 @@ function enableCam(event) {
         webcamRunning = true;
         enableWebcamButton.innerText = "DISABLE PREDICTIONS";
     }
-    // getUsermedia parameters.
+
     const constraints = {
         video: {
-            deviceId:$('option:selected').val()
+            deviceId:$('#cameraSelector option:selected').val()
         }
-        //video: $('option:selected').val()
     };
+
     // Activate the webcam stream.
     navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
         video.srcObject = stream;
+        //現在使用中のカメラを更新
+        nowCam = stream.getVideoTracks()[0].getSettings().deviceId;
+
+
         video.addEventListener("loadeddata", predictWebcam);
         GetCameraID();
+
+        if(cameraDeviceIds.length > 1){
         $("#cameraSelector").val(cameraDeviceIds[0].deviceId)
+        }
+        console.log($("#cameraSelector").val())
         $("#webcamButton").hide();
 
-        //console.log("console:" + $('option:selected').val());
 
         //カメラが使用できた場合処理
         //データの送信を開始する。
@@ -543,6 +552,13 @@ $("#menuButton").on("click",function(){
         $("#OverflowMenu").addClass(".menuOpens");
     }
     $("#sideOpenMenuButton").toggle();
+
+    if(cameraDeviceIds.length >= 1){
+        //現在使用しているカメラを取得して更新
+        console.log(nowCam)
+        $("#cameraSelector ").val(nowCam)
+    }
+
     $("#sideCloseMenuButton").toggle();
 
 });
@@ -589,14 +605,16 @@ GetCameraID();
 
 //カメラの選択項目の取得
 var CameraSelected = 0;
+
 $("#cameraSelector").change(function(){
     CameraSelected = $('option:selected').val();
-    //console.log(CameraSelected === 0)
     if(CameraSelected <= 0){
         switchCam(false)
+
     }else{
         switchCam(true)
     }
+    nowCam = CameraSelected;
 });
 
 //メニューの構築
