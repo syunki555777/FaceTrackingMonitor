@@ -257,14 +257,16 @@ function hasGetUserMedia() {
 // wants to activate it.
 if (hasGetUserMedia()) {
     enableWebcamButton = document.getElementById("webcamButton");
+
+    //ボタン押下時のイベント
     enableWebcamButton.addEventListener("click", (event)=>{
 
+        enableCam(event);
         try{
-            $("#cameraSelector").val(cameraDeviceIds[0].deviceId)
+            $("#cameraSelector").val(cameraDeviceIds[1].deviceId)
         }catch(e){
             console.error(e)
         }
-        enableCam(event);
     });
 }
 else {
@@ -311,14 +313,17 @@ function enableCam(event) {
 
 
     }).catch((e)=>{
+        console.log(e.name)
         if(e.name === "NotAllowedError"){
 
             notice("権限がありません。","カメラの権限が拒否されています。設定から許可してください。",true)
             StopSending();
-        }else{
+        }else if(e.name === "TypeError"){
+            notice("権限が発行されました。","もう一度ボタンを押すことで推論を開始できます。",false)
 
-            notice("利用できません。","カメラにアクセスできませんでした。",true)
-            notice(e.title,e.message,true)
+        }else
+        {
+            notice("利用できません。","カメラにアクセスできませんでした。再読み込みしてください。",true)
             StopSending();
         }
         console.log(e)
@@ -549,7 +554,16 @@ function GetCameraID(){
     navigator.mediaDevices.enumerateDevices().then(function(mediaDevices) {
         $("#cameraSelector").children().remove();
         $("<option value=\"0\">カメラOFF</option>").appendTo("#cameraSelector");
+
+                   // デバイスがない場合、エラーチェック
+           if (mediaDevices.filter(device => device.kind === "videoinput").length === 0) {
+               notice("警告", "利用可能なカメラデバイスがありません。", true);
+               return; // デバイスがなければ処理を終了
+           }
+
+        cameraDeviceIds.length = 0; // リストを初期化
         for (let len = mediaDevices.length, i = 0; i < len; i++) {
+
             const item = mediaDevices[i];
             // NOTE: カメラデバイスの場合、 kind プロパティには "videoinput" が入っている:
             if (item.kind === "videoinput") {
