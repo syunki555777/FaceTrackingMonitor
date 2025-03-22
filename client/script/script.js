@@ -32,6 +32,10 @@ var write_delay = 33;
 const protocol = window.location.protocol === "https:" ? "wss" : "ws";
 const host = window.location.host;
 
+//心拍数
+    const signalBuffer = []; // 緑チャネルの時系列データ
+    const maxBufferSize = 300; // 10秒間のデータ（30フレーム/秒 × 10秒）
+
 var nowCam = 0;
 
 /*推論開始前のサーバー接続処理*/
@@ -57,6 +61,114 @@ var nowCam = 0;
         // SendDataクラスのインスタンス作成
         sendDataInstance = new SendData(socket, userID);
     };
+
+
+    //心拍数系
+    //---------
+
+    // 時系列データの信号処理
+    function processSignal(signal) {
+        // 1. 平滑化（例：移動平均）
+        const smoothedSignal = smoothSignal(signal);
+
+        // 2. フーリエ変換（FFT）
+        const frequencyData = calculateFFT(smoothedSignal);
+
+        // 3. 主成分周波数を抽出して心拍数を計算
+        const peakFrequency = findPeakFrequency(frequencyData);
+        const heartRate = peakFrequency * 60;  // BPMに変換
+        return heartRate;
+    }
+
+    function updateSignalBuffer(newValue) {
+        signalBuffer.push(newValue);
+        if (signalBuffer.length > maxBufferSize) {
+            signalBuffer.shift(); // 古いデータを削除
+        }
+    }
+
+function calculateAverage(imageData, channel) {
+    const data = imageData.data; // rgba配列
+    let channelIndex;
+
+    // チャネルを設定 (0:赤, 1:緑, 2:青)
+    switch (channel.toLowerCase()) {
+        case 'red':
+            channelIndex = 0; // 赤チャネル
+            break;
+        case 'green':
+            channelIndex = 1; // 緑チャネル
+            break;
+        case 'blue':
+            channelIndex = 2; // 青チャネル
+            break;
+        default:
+            throw new Error('不正なチャネル名です: 必ず "red", "green", "blue" のいずれかを指定してください');
+    }
+
+    let total = 0;
+    let count = 0;
+
+    // RGBA配列を走査 (4要素ごとに1ピクセルのデータが格納されている)
+    for (let i = 0; i < data.length; i += 4) {
+        total += data[i + channelIndex]; // 指定したチャネルの値を合計
+        count++;
+    }
+
+    // ピクセルの平均を計算
+    return total / count;
+}
+
+function extractForeheadRegion(landmarks) {
+    if (!landmarks || landmarks.length === 0) {
+        console.error("ランドマークデータがありません");
+        return [];
+    }
+
+    const foreheadIndices = [107,193,336,417]; // 額のランドマークID
+    return foreheadIndices.map(index => landmarks[index]);
+}
+
+function calculateBoundingBox(region) {
+    if (!region || region.length === 0) {
+        console.error("額領域データが空です");
+        return { x: 0, y: 0, width: 0, height: 0 };
+    }
+
+    const xs = region.map(point => point.x);
+    const ys = region.map(point => point.y);
+
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    return {
+        x: Math.max(Math.floor(minX * canvasElement.width), 0),
+        y: Math.max(Math.floor(minY * canvasElement.height), 0),
+        width: Math.floor((maxX - minX) * canvasElement.width),
+        height: Math.floor((maxY - minY) * canvasElement.height)
+    };
+}
+
+function extractForeheadPixels(canvas, landmarks) {
+    const foreheadRegion = extractForeheadRegion(landmarks);
+    if (foreheadRegion.length === 0) {
+        console.error("額領域が特定できません");
+        return null;
+    }
+
+    const boundingBox = calculateBoundingBox(foreheadRegion);
+    const { x, y, width, height } = boundingBox;
+
+    if (width <= 0 || height <= 0) {
+        console.error("バウンディングボックスの幅または高さが無効です", { x, y, width, height });
+        return null;
+    }
+
+    const ctx = canvas.getContext('2d');
+    return ctx.getImageData(x, y, width, height);
+}
 
     // WebSocket接続のクラス
     class SendData {
@@ -429,6 +541,17 @@ async function predictWebcam() {
             document.getElementById("head_tilt_yaw").innerText = `Yaw (左右): ${headTiltAngles.yaw.toFixed(2)}°`;
             document.getElementById("head_tilt_pitch").innerText = `Pitch (上下): ${headTiltAngles.pitch.toFixed(2)}°`;
             document.getElementById("head_tilt_roll").innerText = `Roll (回転): ${headTiltAngles.roll.toFixed(2)}°`;
+
+            //心拍数の計算
+            // const foreheadPixels = extractForeheadPixels(canvasElement, landmarks);
+            //     if (!foreheadPixels) {
+            //         console.warn("額のピクセルデータが取得できませんでした");
+            //         continue;
+            //     }
+            //
+            //     const greenAverage = calculateAverage(foreheadPixels, "green");
+            //     console.log(`Forehead Green Channel Average: ${greenAverage}`);
+            // }
         }
 
         if(results.faceBlendshapes.length > 0){
@@ -441,12 +564,15 @@ async function predictWebcam() {
                         const sendData = [
                         { name: "eye_blink_left", value: results.faceBlendshapes[0].categories[9].score, unit: "%" },
                         { name: "eye_blink_right", value: results.faceBlendshapes[0].categories[10].score, unit: "%" },
-
+                        { name: "jaw_Open", value: results.faceBlendshapes[0].categories[25].score, unit: "%" },
+                        { name: "eye_Look_Down_Left", value: results.faceBlendshapes[0].categories[11].score, unit: "%" },
+                        { name: "eye_Look_In_Left", value: results.faceBlendshapes[0].categories[13].score, unit: "%" },
                     ];
                         sendDataInstance.addSample(sendData);
                 }
                 last_write = now;
             }
+
 
             drawBlendShapes(videoBlendShapes, results.faceBlendshapes);
         }
@@ -455,7 +581,7 @@ async function predictWebcam() {
             window.requestAnimationFrame(predictWebcam);
         }
     }
-}
+
 
 function drawBlendShapes(el, blendShapes) {
     if (!blendShapes.length) {

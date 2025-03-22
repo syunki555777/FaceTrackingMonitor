@@ -50,6 +50,9 @@
         const clientDataHistory = {}; // { userId: { labels: [], datasets: {} } }
         let charts = {}; // クライアントごとにChartインスタンスを保持
 
+        //グラフ
+        const maxNumsLabels = 200;
+
         // WebSocketが開いたときの処理
         socket.onopen = function () {
             console.log("WebSocket接続が確立しました。");
@@ -60,7 +63,7 @@
             try {
                 // 受信データの解析
                 const responseData = JSON.parse(event.data);
-                console.log(responseData);
+
                 Object.keys(responseData).forEach(parent => {
                     // 必須フィールドの存在確認
                     if (!responseData[parent] || !responseData[parent].data || !responseData[parent].user_id) {
@@ -89,7 +92,7 @@
 
                         // 各データ項目を処理
                         data.forEach(({ name, value, unit }) => {
-                            const datasetKey = `${name} (${unit})`; // データキー例: "heart_rate (bpm)"
+                            const datasetKey = `${name} (${unit})`;
 
                             if (!clientDataHistory[user_id].datasets[datasetKey]) {
                                 clientDataHistory[user_id].datasets[datasetKey] = [];
@@ -118,6 +121,7 @@
                         updateChartData(charts[user_id], clientDataHistory[user_id]);
                     } else {
                         drawChart(user_id, clientDataHistory[user_id]);
+                        drawVarianceChart(user_id, Object.keys(clientDataHistory[user_id].datasets));
                     }
                 });
             } catch (e) {
@@ -141,9 +145,20 @@
                 title.textContent = `ユーザーID: ${userId}`;
                 card.appendChild(title);
 
+
+                const title_graph = document.createElement("h2");
+                title_graph.textContent = `測定した値`;
+                card.appendChild(title_graph);
                 const canvas = document.createElement("canvas");
                 canvas.id = `chart_${userId}`;
                 card.appendChild(canvas);
+
+                const title_var_graph = document.createElement("h2");
+                title_var_graph.textContent = `分散値`;
+                card.appendChild(title_var_graph);
+                const var_canvas = document.createElement("canvas");
+                var_canvas.id = `var_chart_${userId}`;
+                card.appendChild(var_canvas);
             }
 
             // データセットを生成
@@ -151,7 +166,7 @@
                 label: key, // 例: "heart_rate (bpm)"
                 data: values, // 初期値リスト
                 fill: false,
-                borderColor: randomColor(),
+                borderColor: generateColorFromSeed(key),
                 tension: 0.1
             }));
 
@@ -179,6 +194,39 @@
         }
 
 
+        function drawVarianceChart(userId, datasetKeys) {
+            const varCtx = document.getElementById(`var_chart_${userId}`).getContext('2d');
+
+            // 初期状態では分散値は空
+            const varDatasets = datasetKeys.map(key => ({
+                label: `Variance: ${key}`,
+                data: [], // 初期分散データは空
+                backgroundColor: generateColorFromSeed(key) // 背景色を設定
+            }));
+
+            charts[`var_${userId}`] = new Chart(varCtx, {
+                type: 'bar', // 棒グラフタイプに変更
+                data: {
+                    labels: [], // ラベルも空のまま
+                    datasets: varDatasets
+                },
+                options: {
+                    responsive: true,
+                    animation: false,
+                    scales: {
+                        x: {
+                            title: { display: true, text: "時刻" }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: "Variance" }
+                        }
+                    }
+                }
+            });
+        }
+
+
         function updateChartData(chart, updatedData) {
             const { labels: newLabels, datasets: newDatasets } = updatedData;
 
@@ -186,9 +234,9 @@
             const currentLabels = chart.data.labels || [];
             const currentDatasets = chart.data.datasets || [];
 
+
             // 現在のラベルを効率的な検索のためにSet化
             const existingLabels = new Set(currentLabels);
-
             // 新しいラベルとデータを時系列順で処理
             newLabels.forEach((newLabel, labelIndex) => {
                 if (!existingLabels.has(newLabel)) {
@@ -204,12 +252,11 @@
                                 label: key,
                                 data: Array(currentLabels.length - 1).fill(null), // ラベルに合わせる
                                 fill: false,
-                                borderColor: randomColor(),
+                                borderColor: generateColorFromSeed(key),
                                 tension: 0.1
                             };
                             currentDatasets.push(dataset);
                         }
-
                         // データセットに対応する新しいデータを追加
                         dataset.data.push(newValues[labelIndex] || null);
                     });
@@ -217,25 +264,79 @@
             });
 
             // ラベルが最大件数を超える場合、古いものを削除
-            if (currentLabels.length > 200) {
+            if (currentLabels.length > maxNumsLabels) {
                 currentLabels.shift();
                 currentDatasets.forEach(dataset => {
                     dataset.data.shift();
                 });
             }
 
+
+            // 分散値の更新
+            const varChart = charts[`var_${updatedData.user_id}`];
+            if (varChart) {
+                const varDatasets = varChart.data.datasets;
+
+                // 現在の時間を取得
+                const now = new Date().toLocaleTimeString();
+
+                Object.entries(newDatasets).forEach(([key, newValues], index) => {
+                    const variance = calculateVariance(newValues);
+                    if (!varDatasets[index]) return;
+
+                    // 分散値をデータセットに反映
+                    varDatasets[index].data.push(variance);
+
+                    // データ数が最大保持件数を超えた場合、古いデータを削除
+                    if (varDatasets[index].data.length > maxNumsLabels) {
+                        varDatasets[index].data.shift();
+                    }
+                });
+
+                // 分散チャート用のラベルに計算した時刻を追加
+                varChart.data.labels.push(now);
+
+                // ラベルが最大保持件数を超えた場合、古いラベルを削除
+                if (varChart.data.labels.length > maxNumsLabels) {
+                    varChart.data.labels.shift();
+                }
+
+                // 分散チャートを更新
+                varChart.update();
+            }
+
+
             // グラフを更新
             chart.update();
         }
 
+        function generateColorFromSeed(seed) {
+            // ハッシュを生成する関数
+            function hashString(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+                }
+                return hash;
+            }
 
+            const hash = hashString(seed);
 
-        // ランダムな色を生成する関数
-        function randomColor() {
-            const r = Math.floor(Math.random() * 255);
-            const g = Math.floor(Math.random() * 255);
-            const b = Math.floor(Math.random() * 255);
+            // ハッシュ値からRGBを生成
+            const r = Math.abs((hash >> 16) & 0xFF);
+            const g = Math.abs((hash >> 8) & 0xFF);
+            const b = Math.abs(hash & 0xFF);
+
             return `rgba(${r}, ${g}, ${b}, 0.7)`;
+        }
+
+        function calculateVariance(values) {
+            if (!values || values.length === 0) return null;
+
+            const mean = values.reduce((acc, val) => acc + val, 0) / values.length;
+            const variance = values.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / values.length;
+
+            return variance;
         }
 
         // WebSocketが閉じたときの処理
